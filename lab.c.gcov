@@ -1,0 +1,846 @@
+        -:    0:Source:src/lab.c
+        -:    0:Graph:build/tests/lab.c.gcno
+        -:    0:Data:build/tests/lab.c.gcda
+        -:    0:Runs:4
+        -:    0:Source is newer than graph
+        -:    1:#include "lab.h"
+        -:    2:#include <ctype.h>
+        -:    3:#include <stdio.h>
+        -:    4:#include <stdlib.h>
+        -:    5:#include <string.h>
+        -:    6:
+        -:    7:#define TRIE_INDEX_NONE UINT32_MAX
+        -:    8:#define TRIE_INITIAL_CAPACITY 8
+        -:    9:
+        -:   10:typedef struct {
+        -:   11:  uint32_t child[2];
+        -:   12:  uint32_t route_index;
+        -:   13:} trie_node_t;
+        -:   14:
+        -:   15:struct fwd_table {
+        -:   16:  route_t *routes;
+        -:   17:  size_t count;
+        -:   18:  size_t capacity;
+        -:   19:  trie_node_t *trie;
+        -:   20:  size_t trie_count;
+        -:   21:  size_t trie_capacity;
+        -:   22:};
+        -:   23:
+function ip_parse called 172 returned 100% blocks executed 100%
+      172:   24:bool ip_parse(const char *text, uint32_t *addr) {
+      172:   25:  if (text == NULL || addr == NULL) {
+branch  0 taken 168 (fallthrough)
+branch  1 taken 4
+branch  2 taken 4 (fallthrough)
+branch  3 taken 164
+        8:   26:    return false;
+        -:   27:  }
+        -:   28:
+        -:   29:  /* Build the host-order address one octet at a time. */
+      164:   30:  uint32_t result = 0;
+      164:   31:  const char *p = text;
+        -:   32:
+      652:   33:  for (unsigned int octet = 0; octet < 4; ++octet) {
+branch  0 taken 548
+branch  1 taken 104 (fallthrough)
+      548:   34:    if (*p == '\0') {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 544
+        4:   35:      return false;
+        -:   36:    }
+        -:   37:
+      544:   38:    unsigned int value = 0;
+      544:   39:    unsigned int digits = 0;
+     1328:   40:    while (*p >= '0' && *p <= '9') {
+branch  0 taken 800 (fallthrough)
+branch  1 taken 528
+branch  2 taken 796
+branch  3 taken 4 (fallthrough)
+      796:   41:      unsigned int digit = (unsigned int)(*p - '0');
+        -:   42:      /* Check the limit before multiplying, so long input cannot wrap. */
+      796:   43:      if (value > 255U / 10U || (value == 255U / 10U && digit > 255U % 10U)) {
+branch  0 taken 792 (fallthrough)
+branch  1 taken 4
+branch  2 taken 56 (fallthrough)
+branch  3 taken 736
+branch  4 taken 8 (fallthrough)
+branch  5 taken 48
+       12:   44:        return false;
+        -:   45:      }
+      784:   46:      value = value * 10U + digit;
+      784:   47:      ++digits;
+      784:   48:      ++p;
+        -:   49:    }
+        -:   50:
+        -:   51:    /* Only one-digit zero is allowed; "0", not "00" or "010". */
+      532:   52:    if (digits == 0 || (digits > 1 && *(p - digits) == '0')) {
+branch  0 taken 520 (fallthrough)
+branch  1 taken 12
+branch  2 taken 148 (fallthrough)
+branch  3 taken 372
+branch  4 taken 12 (fallthrough)
+branch  5 taken 136
+       24:   53:      return false;
+        -:   54:    }
+        -:   55:
+        -:   56:    /* Each successful octet becomes the next most-significant byte. */
+      508:   57:    result = (result << 8) | value;
+      508:   58:    if (octet < 3) {
+branch  0 taken 392 (fallthrough)
+branch  1 taken 116
+      392:   59:      if (*p != '.') {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 388
+        4:   60:        return false;
+        -:   61:      }
+      388:   62:      ++p;
+      388:   63:      if (*p == '\0') {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 384
+        4:   64:        return false;
+        -:   65:      }
+      116:   66:    } else if (*p != '\0') {
+branch  0 taken 12 (fallthrough)
+branch  1 taken 104
+       12:   67:      return false;
+        -:   68:    }
+        -:   69:  }
+        -:   70:
+      104:   71:  *addr = result;
+      104:   72:  return true;
+        -:   73:}
+        -:   74:
+function ip_format called 16 returned 100% blocks executed 100%
+       16:   75:void ip_format(uint32_t addr, char out[IP_STR_LEN]) {
+        -:   76:  /* Extract bytes from most significant to least significant. */
+       16:   77:  (void)snprintf(out, IP_STR_LEN, "%u.%u.%u.%u",
+       16:   78:                 (unsigned int)((addr >> 24) & 0xffU),
+       16:   79:                 (unsigned int)((addr >> 16) & 0xffU),
+       16:   80:                 (unsigned int)((addr >> 8) & 0xffU),
+        -:   81:                 (unsigned int)(addr & 0xffU));
+       16:   82:}
+        -:   83:
+function cidr_parse called 112 returned 100% blocks executed 100%
+      112:   84:bool cidr_parse(const char *text, cidr_t *block) {
+      112:   85:  if (text == NULL || block == NULL) {
+branch  0 taken 108 (fallthrough)
+branch  1 taken 4
+branch  2 taken 4 (fallthrough)
+branch  3 taken 104
+        8:   86:    return false;
+        -:   87:  }
+        -:   88:
+      104:   89:  const char *slash = strchr(text, '/');
+        -:   90:  /* Exactly one slash is required. */
+      104:   91:  if (slash == NULL || strchr(slash + 1, '/') != NULL) {
+branch  0 taken 96 (fallthrough)
+branch  1 taken 8
+branch  2 taken 4 (fallthrough)
+branch  3 taken 92
+       12:   92:    return false;
+        -:   93:  }
+        -:   94:
+        -:   95:  /* Copy the address portion so ip_parse() receives a complete C string. */
+       92:   96:  size_t address_length = (size_t)(slash - text);
+        -:   97:  char address[IP_STR_LEN];
+       92:   98:  if (address_length == 0 || address_length >= sizeof(address)) {
+branch  0 taken 88 (fallthrough)
+branch  1 taken 4
+branch  2 taken 4 (fallthrough)
+branch  3 taken 84
+        8:   99:    return false;
+        -:  100:  }
+       84:  101:  memcpy(address, text, address_length);
+       84:  102:  address[address_length] = '\0';
+        -:  103:
+        -:  104:  uint32_t addr;
+       84:  105:  if (!ip_parse(address, &addr)) {
+call    0 returned 84
+branch  1 taken 4 (fallthrough)
+branch  2 taken 80
+        4:  106:    return false;
+        -:  107:  }
+        -:  108:
+       80:  109:  const char *p = slash + 1;
+       80:  110:  if (*p == '\0') {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 76
+        4:  111:    return false;
+        -:  112:  }
+       76:  113:  unsigned int prefix = 0;
+        -:  114:  /* /0 is valid, but multi-digit prefixes cannot have a leading zero. */
+       76:  115:  if (*p == '0' && *(p + 1) >= '0' && *(p + 1) <= '9') {
+branch  0 taken 12 (fallthrough)
+branch  1 taken 64
+branch  2 taken 8 (fallthrough)
+branch  3 taken 4
+branch  4 taken 4 (fallthrough)
+branch  5 taken 4
+        4:  116:    return false;
+        -:  117:  }
+      176:  118:  while (*p >= '0' && *p <= '9') {
+branch  0 taken 116 (fallthrough)
+branch  1 taken 60
+branch  2 taken 108
+branch  3 taken 8 (fallthrough)
+      108:  119:    unsigned int digit = (unsigned int)(*p - '0');
+      108:  120:    prefix = prefix * 10U + digit;
+      108:  121:    ++p;
+      108:  122:    if (prefix > 32U) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 104
+        4:  123:      return false;
+        -:  124:    }
+        -:  125:  }
+       68:  126:  if (p == slash + 1 || *p != '\0') {
+branch  0 taken 64 (fallthrough)
+branch  1 taken 4
+branch  2 taken 8 (fallthrough)
+branch  3 taken 56
+       12:  127:    return false;
+        -:  128:  }
+        -:  129:
+       56:  130:  cidr_t parsed = {addr, (uint8_t)prefix};
+       56:  131:  *block = parsed;
+       56:  132:  return true;
+        -:  133:}
+        -:  134:
+function cidr_format called 8 returned 100% blocks executed 100%
+        8:  135:void cidr_format(cidr_t block, char out[CIDR_STR_LEN]) {
+        -:  136:  char address[IP_STR_LEN];
+        8:  137:  ip_format(block.addr, address);
+call    0 returned 8
+        8:  138:  unsigned int prefix = block.prefix;
+        -:  139:  /* Match cidr_mask(): prefixes above 32 are represented as /32. */
+        8:  140:  if (prefix > 32U) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 4
+        4:  141:    prefix = 32U;
+        -:  142:  }
+        8:  143:  (void)snprintf(out, CIDR_STR_LEN, "%s/%u", address, prefix);
+        8:  144:}
+        -:  145:
+function cidr_mask called 16724 returned 100% blocks executed 100%
+    16724:  146:uint32_t cidr_mask(uint8_t prefix) {
+        -:  147:  /* Avoid the undefined shift-by-32 produced by a /0 formula. */
+    16724:  148:  if (prefix == 0) {
+branch  0 taken 52 (fallthrough)
+branch  1 taken 16672
+       52:  149:    return 0;
+        -:  150:  }
+        -:  151:  /* Larger prefixes are treated as /32 throughout the API. */
+    16672:  152:  if (prefix > 32) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 16668
+        4:  153:    prefix = 32;
+        -:  154:  }
+    16672:  155:  return UINT32_MAX << (32U - (uint32_t)prefix);
+        -:  156:}
+        -:  157:
+function cidr_network called 16656 returned 100% blocks executed 100%
+    16656:  158:uint32_t cidr_network(cidr_t block) {
+        -:  159:  /* Clearing with the mask retains only the network portion. */
+    16656:  160:  return block.addr & cidr_mask(block.prefix);
+call    0 returned 16656
+        -:  161:}
+        -:  162:
+function cidr_broadcast called 24 returned 100% blocks executed 100%
+       24:  163:uint32_t cidr_broadcast(cidr_t block) {
+       24:  164:  return cidr_network(block) | ~cidr_mask(block.prefix);
+call    0 returned 24
+call    1 returned 24
+        -:  165:}
+        -:  166:
+function cidr_first_host called 12 returned 100% blocks executed 100%
+       12:  167:uint32_t cidr_first_host(cidr_t block) {
+       12:  168:  uint32_t prefix = block.prefix > 32 ? 32U : block.prefix;
+       12:  169:  uint32_t network = cidr_network(block);
+call    0 returned 12
+        -:  170:  /* /31 and /32 have no excluded network address. */
+       12:  171:  return prefix < 31 ? network + 1U : network;
+branch  0 taken 4 (fallthrough)
+branch  1 taken 8
+        -:  172:}
+        -:  173:
+function cidr_last_host called 12 returned 100% blocks executed 100%
+       12:  174:uint32_t cidr_last_host(cidr_t block) {
+       12:  175:  uint32_t prefix = block.prefix > 32 ? 32U : block.prefix;
+       12:  176:  uint32_t broadcast = cidr_broadcast(block);
+call    0 returned 12
+        -:  177:  /* /31 and /32 use the broadcast address as a usable endpoint. */
+       12:  178:  return prefix < 31 ? broadcast - 1U : broadcast;
+branch  0 taken 4 (fallthrough)
+branch  1 taken 8
+        -:  179:}
+        -:  180:
+function cidr_host_count called 12 returned 100% blocks executed 100%
+       12:  181:uint64_t cidr_host_count(cidr_t block) {
+       12:  182:  uint32_t prefix = block.prefix > 32 ? 32U : block.prefix;
+        -:  183:  /* Handle the point-to-point and single-host cases explicitly. */
+       12:  184:  if (prefix == 32) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 8
+        4:  185:    return 1;
+        -:  186:  }
+        8:  187:  if (prefix == 31) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 4
+        4:  188:    return 2;
+        -:  189:  }
+        -:  190:  /* Compute in 64 bits because a /0 contains 2^32 addresses. */
+        4:  191:  return (UINT64_C(1) << (32U - prefix)) - 2U;
+        -:  192:}
+        -:  193:
+function cidr_contains called 28 returned 100% blocks executed 100%
+       28:  194:bool cidr_contains(cidr_t block, uint32_t addr) {
+        -:  195:  /* Masking both sides removes the bits that the block does not own. */
+       28:  196:  return cidr_network(block) == (addr & cidr_mask(block.prefix));
+call    0 returned 28
+call    1 returned 28
+        -:  197:}
+        -:  198:
+function cidr_is_network called 16580 returned 100% blocks executed 100%
+    16580:  199:bool cidr_is_network(cidr_t block) {
+        -:  200:  /* Host bits are absent exactly when the network address is unchanged. */
+    16580:  201:  return cidr_network(block) == block.addr;
+call    0 returned 16580
+        -:  202:}
+        -:  203:
+function cidr_subnet called 56 returned 100% blocks executed 100%
+       56:  204:bool cidr_subnet(cidr_t block, uint32_t n, uint32_t i, cidr_t *out) {
+        -:  205:  /* A size must be both nonzero and an exact power of two. */
+       56:  206:  if (out == NULL || !cidr_is_network(block) || n == 0 || (n & (n - 1)) != 0 || i >= n) {
+branch  0 taken 52 (fallthrough)
+branch  1 taken 4
+call    2 returned 52
+branch  3 taken 48 (fallthrough)
+branch  4 taken 4
+branch  5 taken 44 (fallthrough)
+branch  6 taken 4
+branch  7 taken 40 (fallthrough)
+branch  8 taken 4
+branch  9 taken 4 (fallthrough)
+branch 10 taken 36
+       20:  207:    return false;
+        -:  208:  }
+        -:  209:
+        -:  210:  /* Find log2(n), the number of host bits borrowed from the block. */
+       36:  211:  uint32_t borrowed_bits = 0;
+       36:  212:  uint32_t remaining = n;
+      112:  213:  while (remaining > 1) {
+branch  0 taken 76
+branch  1 taken 36 (fallthrough)
+       76:  214:    ++borrowed_bits;
+       76:  215:    remaining >>= 1;
+        -:  216:  }
+        -:  217:
+       36:  218:  uint32_t prefix = block.prefix > 32 ? 32U : block.prefix;
+       36:  219:  if (prefix + borrowed_bits > 32) {
+branch  0 taken 8 (fallthrough)
+branch  1 taken 28
+        8:  220:    return false;
+        -:  221:  }
+        -:  222:
+       28:  223:  uint32_t new_prefix = prefix + borrowed_bits;
+       28:  224:  uint32_t host_bits = 32U - new_prefix;
+        -:  225:  /* Each index advances by one equally sized subnet. */
+       28:  226:  uint64_t subnet_size = UINT64_C(1) << host_bits;
+       28:  227:  uint32_t subnet_address = (uint32_t)(block.addr + i * subnet_size);
+        -:  228:
+       28:  229:  out->addr = subnet_address;
+       28:  230:  out->prefix = (uint8_t)new_prefix;
+       28:  231:  return true;
+        -:  232:}
+        -:  233:
+function route_parse called 108 returned 100% blocks executed 100%
+      108:  234:bool route_parse(const char *line, route_t *route) {
+      108:  235:  if (line == NULL || route == NULL) {
+branch  0 taken 104 (fallthrough)
+branch  1 taken 4
+branch  2 taken 4 (fallthrough)
+branch  3 taken 100
+        8:  236:    return false;
+        -:  237:  }
+        -:  238:
+        -:  239:  /* Trim outer whitespace, then keep field slices inside the original line. */
+      100:  240:  const char *begin = line;
+      108:  241:  while (*begin != '\0' && isspace((unsigned char)*begin)) {
+branch  0 taken 104 (fallthrough)
+branch  1 taken 4
+branch  2 taken 8
+branch  3 taken 96 (fallthrough)
+        8:  242:    ++begin;
+        -:  243:  }
+      100:  244:  const char *end = line + strlen(line);
+      160:  245:  while (end > begin && isspace((unsigned char)end[-1])) {
+branch  0 taken 156 (fallthrough)
+branch  1 taken 4
+branch  2 taken 60
+branch  3 taken 96 (fallthrough)
+       60:  246:    --end;
+        -:  247:  }
+      100:  248:  if (begin == end) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 96
+        4:  249:    return false;
+        -:  250:  }
+        -:  251:
+        -:  252:  const char *fields[3];
+        -:  253:  size_t lengths[3];
+       96:  254:  const char *cursor = begin;
+      368:  255:  for (size_t i = 0; i < 3; ++i) {
+branch  0 taken 288
+branch  1 taken 80 (fallthrough)
+      468:  256:    while (cursor < end && (*cursor == ' ' || *cursor == '\t')) {
+branch  0 taken 456 (fallthrough)
+branch  1 taken 12
+branch  2 taken 176
+branch  3 taken 280 (fallthrough)
+branch  4 taken 4
+branch  5 taken 276 (fallthrough)
+      180:  257:      ++cursor;
+        -:  258:    }
+      288:  259:    if (cursor == end) {
+branch  0 taken 12 (fallthrough)
+branch  1 taken 276
+       12:  260:      return false;
+        -:  261:    }
+        -:  262:
+      276:  263:    fields[i] = cursor;
+     2252:  264:    while (cursor < end && *cursor != ' ' && *cursor != '\t') {
+branch  0 taken 2172 (fallthrough)
+branch  1 taken 80
+branch  2 taken 1984 (fallthrough)
+branch  3 taken 188
+branch  4 taken 1980
+branch  5 taken 4 (fallthrough)
+     1980:  265:      if (isspace((unsigned char)*cursor)) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 1976
+        4:  266:        return false;
+        -:  267:      }
+     1976:  268:      ++cursor;
+        -:  269:    }
+      272:  270:    lengths[i] = (size_t)(cursor - fields[i]);
+        -:  271:  }
+        -:  272:
+       80:  273:  if (cursor != end) {
+branch  0 taken 12 (fallthrough)
+branch  1 taken 68
+       12:  274:    return false;
+        -:  275:  }
+        -:  276:
+       68:  277:  route_t parsed = {0};
+        -:  278:  /* Parse into a temporary so invalid input never partially changes route. */
+       68:  279:  if (lengths[0] == sizeof("default") - 1 &&
+branch  0 taken 20 (fallthrough)
+branch  1 taken 48
+       20:  280:      memcmp(fields[0], "default", sizeof("default") - 1) == 0) {
+branch  0 taken 20 (fallthrough)
+branch  1 taken 0
+       20:  281:    parsed.dest = (cidr_t){0, 0};
+        -:  282:  } else {
+        -:  283:    char destination[CIDR_STR_LEN];
+       48:  284:    if (lengths[0] >= sizeof(destination)) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 44
+       12:  285:      return false;
+        -:  286:    }
+       44:  287:    memcpy(destination, fields[0], lengths[0]);
+       44:  288:    destination[lengths[0]] = '\0';
+       44:  289:    if (!cidr_parse(destination, &parsed.dest) ||
+call    0 returned 44
+branch  1 taken 44 (fallthrough)
+branch  2 taken 0
+       44:  290:        !cidr_is_network(parsed.dest)) {
+call    0 returned 44
+branch  1 taken 8 (fallthrough)
+branch  2 taken 36
+        8:  291:      return false;
+        -:  292:    }
+        -:  293:  }
+        -:  294:
+       56:  295:  if (lengths[1] == sizeof("direct") - 1 &&
+branch  0 taken 32 (fallthrough)
+branch  1 taken 24
+       32:  296:      memcmp(fields[1], "direct", sizeof("direct") - 1) == 0) {
+branch  0 taken 32 (fallthrough)
+branch  1 taken 0
+        -:  297:    /* Directly connected routes have no next-hop address. */
+       32:  298:    parsed.gateway = 0;
+        -:  299:  } else {
+        -:  300:    char gateway[IP_STR_LEN];
+       24:  301:    if (lengths[1] >= sizeof(gateway)) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 20
+        8:  302:      return false;
+        -:  303:    }
+       20:  304:    memcpy(gateway, fields[1], lengths[1]);
+       20:  305:    gateway[lengths[1]] = '\0';
+       20:  306:    if (!ip_parse(gateway, &parsed.gateway)) {
+call    0 returned 20
+branch  1 taken 4 (fallthrough)
+branch  2 taken 16
+        4:  307:      return false;
+        -:  308:    }
+        -:  309:  }
+        -:  310:
+       48:  311:  if (lengths[2] == 0 || lengths[2] >= sizeof(parsed.dev)) {
+branch  0 taken 48 (fallthrough)
+branch  1 taken 0
+branch  2 taken 4 (fallthrough)
+branch  3 taken 44
+        4:  312:    return false;
+        -:  313:  }
+       44:  314:  memcpy(parsed.dev, fields[2], lengths[2]);
+       44:  315:  parsed.dev[lengths[2]] = '\0';
+       44:  316:  *route = parsed;
+       44:  317:  return true;
+        -:  318:}
+        -:  319:
+function table_create called 48 returned 100% blocks executed 71%
+       48:  320:fwd_table_t *table_create(void) {
+       48:  321:  fwd_table_t *table = calloc(1, sizeof(*table));
+        -:  322:  // GCOVR_EXCL_START
+       48:  323:  if (table == NULL) {
+branch  0 taken 0 (fallthrough)
+branch  1 taken 48
+    #####:  324:    return NULL;
+        -:  325:  }
+        -:  326:  // GCOVR_EXCL_STOP
+        -:  327:
+       48:  328:  table->trie = malloc(TRIE_INITIAL_CAPACITY * sizeof(*table->trie));
+        -:  329:  // GCOVR_EXCL_START
+       48:  330:  if (table->trie == NULL) {
+branch  0 taken 0 (fallthrough)
+branch  1 taken 48
+    #####:  331:    free(table);
+    #####:  332:    return NULL;
+        -:  333:  }
+        -:  334:  // GCOVR_EXCL_STOP
+       48:  335:  table->trie_capacity = TRIE_INITIAL_CAPACITY;
+       48:  336:  table->trie_count = 1;
+       48:  337:  table->trie[0] = (trie_node_t){{TRIE_INDEX_NONE, TRIE_INDEX_NONE},
+        -:  338:                                  TRIE_INDEX_NONE};
+       48:  339:  return table;
+        -:  340:}
+        -:  341:
+function table_destroy called 52 returned 100% blocks executed 100%
+       52:  342:void table_destroy(fwd_table_t *table) {
+       52:  343:  if (table != NULL) {
+branch  0 taken 48 (fallthrough)
+branch  1 taken 4
+       48:  344:    free(table->routes);
+       48:  345:    free(table->trie);
+       48:  346:    free(table);
+        -:  347:  }
+       52:  348:}
+        -:  349:
+function table_count called 52 returned 100% blocks executed 100%
+       52:  350:size_t table_count(const fwd_table_t *table) {
+       52:  351:  return table == NULL ? 0 : table->count;
+branch  0 taken 48 (fallthrough)
+branch  1 taken 4
+        -:  352:}
+        -:  353:
+        -:  354:#ifdef TEST
+function table_test_set_count called 4 returned 100% blocks executed 100%
+        4:  355:void table_test_set_count(fwd_table_t *table, size_t count) {
+        4:  356:  table->count = count;
+        4:  357:}
+        -:  358:
+function table_test_set_trie_count called 4 returned 100% blocks executed 100%
+        4:  359:void table_test_set_trie_count(fwd_table_t *table, size_t count) {
+        4:  360:  table->trie_count = count;
+        4:  361:}
+        -:  362:#endif
+        -:  363:
+function table_add called 16488 returned 100% blocks executed 91%
+    16488:  364:bool table_add(fwd_table_t *table, const route_t *route) {
+        -:  365:  /* Only canonical networks with a usable, terminated device name are valid. */
+    16488:  366:  if (table == NULL || route == NULL || route->dest.prefix > 32 ||
+branch  0 taken 16484 (fallthrough)
+branch  1 taken 4
+branch  2 taken 16480 (fallthrough)
+branch  3 taken 4
+branch  4 taken 16476 (fallthrough)
+branch  5 taken 4
+    16476:  367:      !cidr_is_network(route->dest)) {
+call    0 returned 16476
+branch  1 taken 4 (fallthrough)
+branch  2 taken 16472
+       16:  368:    return false;
+        -:  369:  }
+        -:  370:
+    16472:  371:  size_t dev_length = 0;
+    82492:  372:  while (dev_length < sizeof(route->dev) && route->dev[dev_length] != '\0') {
+branch  0 taken 82488 (fallthrough)
+branch  1 taken 4
+branch  2 taken 66020
+branch  3 taken 16468 (fallthrough)
+    66020:  373:    ++dev_length;
+        -:  374:  }
+    16472:  375:  if (dev_length == 0 || dev_length == sizeof(route->dev)) {
+branch  0 taken 16468 (fallthrough)
+branch  1 taken 4
+branch  2 taken 4 (fallthrough)
+branch  3 taken 16464
+        8:  376:    return false;
+        -:  377:  }
+        -:  378:
+    16464:  379:  if (table->count >= TRIE_INDEX_NONE) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 16460
+        4:  380:    return false;
+        -:  381:  }
+        -:  382:
+        -:  383:  /* Walk the existing prefix path to detect duplicates and find missing nodes. */
+    16460:  384:  uint32_t node_index = 0;
+    16460:  385:  uint32_t depth = 0;
+   508388:  386:  while (depth < route->dest.prefix) {
+branch  0 taken 508356
+branch  1 taken 32 (fallthrough)
+   508356:  387:    uint32_t bit = (route->dest.addr >> (31U - depth)) & 1U;
+   508356:  388:    uint32_t child = table->trie[node_index].child[bit];
+   508356:  389:    if (child == TRIE_INDEX_NONE) {
+branch  0 taken 16428 (fallthrough)
+branch  1 taken 491928
+    16428:  390:      break;
+        -:  391:    }
+   491928:  392:    node_index = child;
+   491928:  393:    ++depth;
+        -:  394:  }
+    16460:  395:  if (depth == route->dest.prefix &&
+branch  0 taken 32 (fallthrough)
+branch  1 taken 16428
+       32:  396:      table->trie[node_index].route_index != TRIE_INDEX_NONE) {
+branch  0 taken 8 (fallthrough)
+branch  1 taken 24
+        8:  397:    return false;
+        -:  398:  }
+        -:  399:
+    16452:  400:  size_t missing_nodes = (size_t)route->dest.prefix - depth;
+    16452:  401:  if (missing_nodes > (size_t)TRIE_INDEX_NONE - table->trie_count) {
+branch  0 taken 4 (fallthrough)
+branch  1 taken 16448
+        4:  402:    return false;
+        -:  403:  }
+    16448:  404:  size_t needed_nodes = table->trie_count + missing_nodes;
+    16448:  405:  if (needed_nodes > table->trie_capacity) {
+branch  0 taken 72 (fallthrough)
+branch  1 taken 16376
+       72:  406:    size_t new_capacity = table->trie_capacity;
+      160:  407:    while (new_capacity < needed_nodes) {
+branch  0 taken 88
+branch  1 taken 72 (fallthrough)
+       88:  408:      // Reaching this capacity requires impractically large trie storage.
+branch  0 taken 0 (fallthrough)
+branch  1 taken 88
+    #####:  409:      // GCOVR_EXCL_START
+    #####:  410:      if (new_capacity > (size_t)TRIE_INDEX_NONE / 2) {
+        -:  411:        new_capacity = (size_t)TRIE_INDEX_NONE;
+       88:  412:        break;
+        -:  413:      }
+       72:  414:      // GCOVR_EXCL_STOP
+branch  0 taken 72 (fallthrough)
+branch  1 taken 0
+branch  2 taken 0 (fallthrough)
+branch  3 taken 72
+        -:  415:      new_capacity *= 2;
+    #####:  416:    }
+        -:  417:    // These overflow guards are unreachable with the table's 32-bit index
+        -:  418:    // limits on this 64-bit build.
+       72:  419:    // GCOVR_EXCL_START
+        -:  420:    if (new_capacity < needed_nodes ||
+       72:  421:        new_capacity > SIZE_MAX / sizeof(*table->trie)) {
+branch  0 taken 0 (fallthrough)
+branch  1 taken 72
+    #####:  422:      return false;
+        -:  423:    }
+        -:  424:    // GCOVR_EXCL_STOP
+       72:  425:    trie_node_t *new_trie =
+       72:  426:        realloc(table->trie, new_capacity * sizeof(*table->trie));
+        -:  427:    // GCOVR_EXCL_START
+        -:  428:    if (new_trie == NULL) {
+    16448:  429:      return false;
+branch  0 taken 68 (fallthrough)
+branch  1 taken 16380
+        -:  430:    }
+       68:  431:    // GCOVR_EXCL_STOP
+branch  0 taken 36 (fallthrough)
+branch  1 taken 32
+       68:  432:    table->trie = new_trie;
+branch  0 taken 68 (fallthrough)
+branch  1 taken 0
+branch  2 taken 0 (fallthrough)
+branch  3 taken 68
+        -:  433:    table->trie_capacity = new_capacity;
+    #####:  434:  }
+        -:  435:
+        -:  436:  if (table->count == table->capacity) {
+       68:  437:    /* Grow geometrically to keep repeated additions efficient. */
+        -:  438:    size_t new_capacity = table->capacity == 0 ? 8 : table->capacity * 2;
+       68:  439:    // The route-count limit prevents this size overflow on this 64-bit build.
+branch  0 taken 0 (fallthrough)
+branch  1 taken 68
+    #####:  440:    // GCOVR_EXCL_START
+        -:  441:    if (new_capacity < table->capacity ||
+        -:  442:        new_capacity > SIZE_MAX / sizeof(*table->routes)) {
+       68:  443:      return false;
+       68:  444:    }
+        -:  445:    // GCOVR_EXCL_STOP
+        -:  446:    route_t *new_routes =
+        -:  447:        realloc(table->routes, new_capacity * sizeof(*table->routes));
+    16448:  448:    // GCOVR_EXCL_START
+   541604:  449:    if (new_routes == NULL) {
+branch  0 taken 525156
+branch  1 taken 16448 (fallthrough)
+   525156:  450:      return false;
+   525156:  451:    }
+   525156:  452:    // GCOVR_EXCL_STOP
+branch  0 taken 33324 (fallthrough)
+branch  1 taken 491832
+    33324:  453:    table->routes = new_routes;
+    33324:  454:    table->capacity = new_capacity;
+        -:  455:  }
+    33324:  456:
+        -:  457:  /* Create any missing path nodes, then store this route at its prefix node. */
+   525156:  458:  node_index = 0;
+        -:  459:  for (depth = 0; depth < route->dest.prefix; ++depth) {
+        -:  460:    uint32_t bit = (route->dest.addr >> (31U - depth)) & 1U;
+    16448:  461:    uint32_t child = table->trie[node_index].child[bit];
+    16448:  462:    if (child == TRIE_INDEX_NONE) {
+    16448:  463:      child = (uint32_t)table->trie_count++;
+    16448:  464:      table->trie[child] = (trie_node_t){{TRIE_INDEX_NONE, TRIE_INDEX_NONE},
+        -:  465:                                         TRIE_INDEX_NONE};
+        -:  466:      table->trie[node_index].child[bit] = child;
+function table_load called 44 returned 100% blocks executed 100%
+       44:  467:    }
+       44:  468:    node_index = child;
+branch  0 taken 32 (fallthrough)
+branch  1 taken 12
+       32:  469:  }
+        -:  470:
+       44:  471:  table->routes[table->count] = *route;
+branch  0 taken 40 (fallthrough)
+branch  1 taken 4
+branch  2 taken 4 (fallthrough)
+branch  3 taken 36
+        8:  472:  table->trie[node_index].route_index = (uint32_t)table->count;
+        -:  473:  ++table->count;
+        -:  474:  return true;
+       36:  475:}
+       36:  476:
+       36:  477:bool table_load(fwd_table_t *table, FILE *in, size_t *bad_line) {
+        -:  478:  if (bad_line != NULL) {
+        -:  479:    *bad_line = 0;
+       84:  480:  }
+call    0 returned 84
+branch  1 taken 68
+branch  2 taken 16 (fallthrough)
+       68:  481:  if (table == NULL || in == NULL) {
+       68:  482:    return false;
+branch  0 taken 8 (fallthrough)
+branch  1 taken 60
+        8:  483:  }
+branch  0 taken 4 (fallthrough)
+branch  1 taken 4
+        4:  484:
+        -:  485:  char *line = NULL;
+        8:  486:  size_t capacity = 0;
+       20:  487:  size_t line_number = 0;
+        -:  488:  ssize_t length;
+       60:  489:  /* getline handles arbitrarily long input lines without a fixed-size limit. */
+       60:  490:  while ((length = getline(&line, &capacity, in)) != -1) {
+branch  0 taken 16 (fallthrough)
+branch  1 taken 44
+        -:  491:    ++line_number;
+       16:  492:    if (memchr(line, '\0', (size_t)length) != NULL) {
+        -:  493:      if (bad_line != NULL) {
+        -:  494:        *bad_line = line_number;
+       60:  495:      }
+       80:  496:      free(line);
+branch  0 taken 64 (fallthrough)
+branch  1 taken 16
+branch  2 taken 20
+branch  3 taken 44 (fallthrough)
+       20:  497:      return false;
+        -:  498:    }
+       60:  499:    char *comment = memchr(line, '#', (size_t)length);
+branch  0 taken 16 (fallthrough)
+branch  1 taken 44
+       16:  500:    if (comment != NULL) {
+        -:  501:      /* Strip comments before deciding whether this line contains a route. */
+        -:  502:      *comment = '\0';
+        -:  503:    }
+        -:  504:
+       44:  505:    const char *content = line;
+call    0 returned 44
+branch  1 taken 36 (fallthrough)
+branch  2 taken 8
+call    3 returned 36
+branch  4 taken 4 (fallthrough)
+branch  5 taken 32
+       12:  506:    while (*content != '\0' && isspace((unsigned char)*content)) {
+branch  0 taken 8 (fallthrough)
+branch  1 taken 4
+        8:  507:      ++content;
+        -:  508:    }
+       12:  509:    if (*content == '\0') {
+       12:  510:      continue;
+        -:  511:    }
+        -:  512:
+        -:  513:    route_t route;
+       16:  514:    /* Keep successfully added earlier routes if this line is invalid. */
+        -:  515:    if (!route_parse(line, &route) || !table_add(table, &route)) {
+       16:  516:      if (bad_line != NULL) {
+call    0 returned 16
+branch  1 taken 12 (fallthrough)
+branch  2 taken 4
+call    3 returned 12
+branch  4 taken 12 (fallthrough)
+branch  5 taken 0
+        -:  517:        *bad_line = line_number;
+        -:  518:      }
+function table_lookup called 44 returned 100% blocks executed 100%
+       44:  519:      free(line);
+       44:  520:      return false;
+branch  0 taken 4 (fallthrough)
+branch  1 taken 40
+        4:  521:    }
+        -:  522:  }
+        -:  523:
+        -:  524:  free(line);
+       40:  525:  /* A read error is distinct from a clean end of file. */
+       40:  526:  return feof(in) && !ferror(in);
+      664:  527:}
+branch  0 taken 660
+branch  1 taken 4 (fallthrough)
+      660:  528:
+      660:  529:const route_t *table_lookup(const fwd_table_t *table, uint32_t dest) {
+      660:  530:  if (table == NULL) {
+branch  0 taken 36 (fallthrough)
+branch  1 taken 624
+       36:  531:    return NULL;
+        -:  532:  }
+      624:  533:
+      624:  534:  /* Remember each matching route while descending at most 32 address bits. */
+branch  0 taken 60 (fallthrough)
+branch  1 taken 564
+       60:  535:  uint32_t route_index = table->trie[0].route_index;
+        -:  536:  uint32_t node_index = 0;
+        -:  537:  for (uint32_t depth = 0; depth < 32; ++depth) {
+       40:  538:    uint32_t bit = (dest >> (31U - depth)) & 1U;
+branch  0 taken 28 (fallthrough)
+branch  1 taken 12
+        -:  539:    uint32_t child = table->trie[node_index].child[bit];
+        -:  540:    if (child == TRIE_INDEX_NONE) {
+        -:  541:      break;
+        -:  542:    }
+        -:  543:    node_index = child;
+        -:  544:    if (table->trie[node_index].route_index != TRIE_INDEX_NONE) {
+        -:  545:      route_index = table->trie[node_index].route_index;
+        -:  546:    }
+        -:  547:  }
+        -:  548:  return route_index == TRIE_INDEX_NONE ? NULL : &table->routes[route_index];
+        -:  549:}
