@@ -1,6 +1,6 @@
 # Submission Report
 
-- Submission generated at 10/27/2026 at 15:30:23
+- Submission generated at 10/27/2026 at 15:42:30
 
 - Machine info: Linux runnervmtai0g 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
 
@@ -41,7 +41,7 @@ The forwarding table uses a binary trie for longest-prefix lookup. Each level re
 
 ## Analysis
 
-The program performs the info, split, and lookup commands as expected. Networks are parsed correctly to provide the needed info and networks are split evenly as long as they are positive power of 2 requests. Routing lookups examine the table for longest prefix and are routed correctly. Because the example table has a default route through a gateway, every valid IPv4 address will match some route in the table. This means the program can select a route for the address; it does not guarantee that the gateway or any later router can actually deliver packets to it.
+This program performs the info, split, and lookup commands as expected. Networks are parsed correctly to provide the needed info and networks are split evenly as long as they are positive power of 2 requests. Routing lookups examine the table for longest prefix and are routed correctly. Because the example table has a default route through a gateway, every valid IPv4 address will match some route in the table. This means the program can select a route for the address; it does not guarantee that the gateway or any later router can actually deliver packets to it.
 ---
 
 
@@ -1680,14 +1680,14 @@ int main(void) {
 ```
 
 ## Scripts Files
-Report generated on 10/27/2026 at 15:30:25
+Report generated on 10/27/2026 at 15:42:32
 
 
 ---
 
 ## End of Report
 
-SHA-256 Hash of the report: bd9aad8794bb2aab9dffae1a4a392dbc4342cf5bec8992d1f3ba987c12858b9a
+SHA-256 Hash of the report: c7872752ca33dbfb8af036ba8d31fc5a95ef0b9586db7025b819927c2f8cd64b
 
 Do not edit the generated report. Any changes will be reported as academic dishonesty
 
